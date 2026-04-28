@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Notes App</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --secondary: #f5f7fa;
+            --text: #333;
+            --danger: #e74c3c;
+            --success: #2ecc71;
+            --border: #ddd;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #e9ecef;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        h1 { text-align: center; color: var(--text); margin-top: 0; }
+
+        /* Input Section */
+        .note-input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 2rem;
+            padding: 15px;
+            background: var(--secondary);
+            border-radius: 8px;
+        }
+
+        input, textarea, select {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        textarea { resize: vertical; min-height: 80px; }
+
+        .btn-row { display: flex; gap: 10px; }
+
+        button {
+            cursor: pointer;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+
+        .btn-add { background: var(--primary); color: white; flex: 2; }
+        .btn-clear { background: var(--border); color: var(--text); flex: 1; }
+        button:hover { opacity: 0.9; }
+
+        /* Search and Filter */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 1rem;
+        }
+        #searchBar { flex: 2; }
+        #filterCategory { flex: 1; }
+
+        /* Notes Display */
+        .notes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .note-card {
+            background: #fff;
+            border-left: 5px solid var(--primary);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .note-title { font-weight: bold; font-size: 1.1rem; }
+        .note-category {
+            font-size: 0.7rem;
+            background: #eee;
+            padding: 2px 8px;
+            border-radius: 10px;
+            text-transform: uppercase;
+        }
+
+        .note-body { font-size: 0.9rem; color: #555; white-space: pre-wrap; margin-bottom: 15px; }
+
+        .note-footer {
+            margin-top: auto;
+            font-size: 0.75rem;
+            color: #999;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .actions button {
+            padding: 5px 8px;
+            font-size: 0.8rem;
+            margin-left: 5px;
+        }
+        .edit-btn { background: #f39c12; color: white; }
+        .delete-btn { background: var(--danger); color: white; }
+
+        /* Status Indicator */
+        .auto-save-status {
+            text-align: right;
+            font-size: 0.8rem;
+            color: var(--success);
+            height: 20px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Student Note Hub</h1>
+
+    <div class="auto-save-status" id="saveStatus"></div>
+
+    <div class="note-input-area">
+        <input type="text" id="noteTitle" placeholder="Note Title...">
+        <select id="noteCategory">
+            <option value="General">General</option>
+            <option value="Lecture">Lecture</option>
+            <option value="Assignment">Assignment</option>
+            <option value="Personal">Personal</option>
+        </select>
+        <textarea id="noteContent" placeholder="Start typing your note here... (Auto-saves)"></textarea>
+        <div class="btn-row">
+            <button class="btn-add" id="addBtn">Save Note</button>
+            <button class="btn-clear" id="clearBtn">Clear Fields</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="searchBar" placeholder="Search notes by title or content...">
+        <select id="filterCategory">
+            <option value="All">All Categories</option>
+            <option value="General">General</option>
+            <option value="Lecture">Lecture</option>
+            <option value="Assignment">Assignment</option>
+            <option value="Personal">Personal</option>
+        </select>
+    </div>
+
+    <div class="notes-grid" id="notesGrid">
+        </div>
+</div>
+
+<script>
+    // State Management
+    let notes = JSON.parse(localStorage.getItem('my_notes')) || [];
+    let editId = null;
+
+    const titleInput = document.getElementById('noteTitle');
+    const contentInput = document.getElementById('noteContent');
+    const categoryInput = document.getElementById('noteCategory');
+    const addBtn = document.getElementById('addBtn');
+    const notesGrid = document.getElementById('notesGrid');
+    const searchBar = document.getElementById('searchBar');
+    const filterCat = document.getElementById('filterCategory');
+    const saveStatus = document.getElementById('saveStatus');
+
+    // INITIAL RENDER
+    renderNotes();
+
+    // ADD / UPDATE NOTE
+    addBtn.addEventListener('click', () => {
+        const title = titleInput.value.trim();
+        const content = contentInput.value.trim();
+        const category = categoryInput.value;
+
+        if (!title || !content) {
+            alert("Please fill in both title and content!");
+            return;
+        }
+
+        if (editId) {
+            notes = notes.map(note => note.id === editId ? 
+                { ...note, title, content, category, timestamp: new Date().toLocaleString() } : note
+            );
+            editId = null;
+            addBtn.textContent = 'Save Note';
+        } else {
+            const newNote = {
+                id: Date.now(),
+                title,
+                content,
+                category,
+                timestamp: new Date().toLocaleString()
+            };
+            notes.unshift(newNote);
+        }
+
+        saveAndRender();
+        clearFields();
+    });
+
+    // AUTO-SAVE LOGIC
+    // Triggers when user stops typing for 1 second in the textarea
+    let timeout = null;
+    contentInput.addEventListener('keyup', () => {
+        clearTimeout(timeout);
+        saveStatus.textContent = "Typing...";
+        timeout = setTimeout(() => {
+            if (contentInput.value.trim() !== "") {
+                saveStatus.textContent = "Changes ready to save";
+            } else {
+                saveStatus.textContent = "";
+            }
+        }, 1000);
+    });
+
+    // DELETE NOTE
+    function deleteNote(id) {
+        if (confirm("Delete this note?")) {
+            notes = notes.filter(n => n.id !== id);
+            saveAndRender();
+        }
+    }
+
+    // EDIT NOTE (Load into inputs)
+    function editNote(id) {
+        const note = notes.find(n => n.id === id);
+        titleInput.value = note.title;
+        contentInput.value = note.content;
+        categoryInput.value = note.category;
+        editId = id;
+        addBtn.textContent = 'Update Note';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // SEARCH & FILTER
+    [searchBar, filterCat].forEach(element => {
+        element.addEventListener('input', renderNotes);
+    });
+
+    function renderNotes() {
+        const searchTerm = searchBar.value.toLowerCase();
+        const filterValue = filterCat.value;
+
+        const filteredNotes = notes.filter(note => {
+            const matchesSearch = note.title.toLowerCase().includes(searchTerm) || 
+                                 note.content.toLowerCase().includes(searchTerm);
+            const matchesFilter = filterValue === 'All' || note.category === filterValue;
+            return matchesSearch && matchesFilter;
+        });
+
+        notesGrid.innerHTML = filteredNotes.map(note => `
+            <div class="note-card">
+                <div class="note-header">
+                    <span class="note-title">${note.title}</span>
+                    <span class="note-category">${note.category}</span>
+                </div>
+                <div class="note-body">${note.content}</div>
+                <div class="note-footer">
+                    <span>${note.timestamp}</span>
+                    <div class="actions">
+                        <button class="edit-btn" onclick="editNote(${note.id})">Edit</button>
+                        <button class="delete-btn" onclick="deleteNote(${note.id})">Delete</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function saveAndRender() {
+        localStorage.setItem('my_notes', JSON.stringify(notes));
+        renderNotes();
+        saveStatus.textContent = "Saved to LocalStorage";
+        setTimeout(() => saveStatus.textContent = "", 2000);
+    }
+
+    function clearFields() {
+        titleInput.value = '';
+        contentInput.value = '';
+        categoryInput.value = 'General';
+        editId = null;
+        addBtn.textContent = 'Save Note';
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', clearFields);
+</script>
+
+</body>
+</html>
